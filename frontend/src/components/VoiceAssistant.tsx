@@ -6,6 +6,7 @@ import { useVoice } from '../lib/useVoice';
 import { chatAPI } from '../lib/api';
 import AudioVisualizer from './audioVisualizer';
 import Image from 'next/image';
+import FloatingVideoEye from './floatingVideo';
 
 export default function VoiceAssistant() {
   const {
@@ -205,31 +206,7 @@ export default function VoiceAssistant() {
       </div>
 
       {/* User Camera Feed - Bottom Right */}
-      <div className="absolute bottom-40 right-6 z-20">
-        <div className="relative w-48 h-36 bg-gray-900 rounded-xl overflow-hidden border-4 border-gray-700">
-          {cameraEnabled ? (
-            <video
-              ref={videoRef}
-              autoPlay
-              playsInline
-              muted
-              className="w-full h-full object-cover"
-            />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center">
-              <div className="relative w-full h-full">
-                <Image 
-                  src="/assets/user.png" 
-                  alt="Persona" 
-                  fill
-                  quality={100}
-                  className="rounded-lg"
-                />
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
+      <FloatingVideoEye />
 
       {/* Bottom Control Bar */}
       <div className="absolute bottom-0 left-0 right-0 z-30">
