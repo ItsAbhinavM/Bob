@@ -11,8 +11,10 @@ from app.services.database import SessionLocal, Task
 from app.services.weather_services import weather_service
 from app.agents.tools.email_service import email_service
 from app.agents.tools.contact_service import contact_service
+from app.agents.tools.stack_overflow_search import stackoverflow_service
 from app.agents.tools.youtube_transcript import youtube_loader
 from app.agents.tools.discord_sharing import send_to_discord
+
 
 class Tool:
     """A tool that the agent can use"""
@@ -116,7 +118,13 @@ class AIAssistantAgent:
                 name="Send through Discord",
                 func=self.send_to_discord_tool,
                 description="Send message through Discord"
-            )
+            ),
+            Tool(
+                name="search_stackoverflow",
+                description="Search Stack Overflow for programming questions and solutions. Use when user asks 'how to', 'error', or programming questions. Input: search query (e.g., 'CORS error FastAPI', 'async await python')",
+                func=self._search_stackoverflow,
+                requires_input=True
+            ),
         ]
     
     def _get_tools_description(self) -> str:
@@ -135,6 +143,7 @@ class AIAssistantAgent:
             'time': ['time', 'date', 'today', 'now', 'what day'],
             'email': ['email', 'send', 'mail', 'message'],
             'contact': ['contact', 'alias', 'save contact', 'add contact'],
+            'stackoverflow': ['how to', 'how do i', 'error', 'debug', 'fix', 'code', 'python', 'javascript', 'react', 'fastapi', 'api', 'function', 'syntax', 'stackoverflow'],
         }
         
         message_lower = message.lower()
@@ -607,6 +616,42 @@ class AIAssistantAgent:
             
         except Exception as e:
             return f"Error listing contacts: {str(e)}"
+    
+    async def _search_stackoverflow(self, query: str) -> str:
+        """Search Stack Overflow and return formatted results"""
+        try:
+            print(f"🔍 Searching Stack Overflow for: {query}")
+            
+            result = await stackoverflow_service.search_question(query, num_results=2)
+            
+            if not result["success"]:
+                return f"Stack Overflow search failed: {result.get('error', 'Unknown error')}"
+            
+            if result["count"] == 0:
+                return f"No Stack Overflow results found for '{query}'. Try rephrasing your question."
+            
+            # Format results for voice readout
+            response = f"Found {result['count']} Stack Overflow results for '{query}':\n\n"
+            
+            for i, item in enumerate(result["results"], 1):
+                response += f"Result {i}: {item['title']}\n"
+                response += f"Score: {item['score']} votes, {item['answer_count']} answers\n"
+                
+                if item["top_answer"]:
+                    answer = item["top_answer"]
+                    status = "Accepted answer" if answer["is_accepted"] else "Top answer"
+                    response += f"{status} ({answer['score']} votes): {answer['body'][:300]}...\n"
+                else:
+                    response += "No answers yet.\n"
+                
+                response += f"Link: {item['link']}\n\n"
+            
+            print(f"✅ Stack Overflow search completed")
+            return response
+            
+        except Exception as e:
+            print(f"❌ Stack Overflow search error: {str(e)}")
+            return f"Error searching Stack Overflow: {str(e)}"
     
     async def send_to_discord_tool(self, message: str) -> str:
         """Send a message through Discord."""
