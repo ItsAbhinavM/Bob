@@ -1,4 +1,4 @@
-import VoiceAssistant from '@/components/VoiceAssistant';
+import VoiceAssistant from '../components/VoiceAssistant';
 
 export default function Home() {
   return <VoiceAssistant />;

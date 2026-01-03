@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { Mic, MicOff, Volume2, VolumeX, Loader2 } from 'lucide-react';
-import { useVoice } from '@/lib/useVoice';
-import { chatAPI } from '@/lib/api';
+import { useVoice } from '../lib/useVoice';
+import { chatAPI } from '../lib/api';
 
 export default function VoiceAssistant() {
   const {
@@ -200,4 +200,3 @@ export default function VoiceAssistant() {
     </div>
   );
 }
-EOF
