@@ -21,6 +21,7 @@ export function useVoice(): UseVoiceReturn {
 
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const synthesisRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const speakingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     const SpeechRecognition = 
@@ -45,8 +46,6 @@ export function useVoice(): UseVoiceReturn {
       recognition.onresult = (event: SpeechRecognitionEvent) => {
         const current = event.resultIndex;
         const transcript = event.results[current][0].transcript;
-        
-        // Update transcript in real-time
         setTranscript(transcript);
       };
 
@@ -71,6 +70,9 @@ export function useVoice(): UseVoiceReturn {
       }
       if (window.speechSynthesis) {
         window.speechSynthesis.cancel();
+      }
+      if (speakingTimeoutRef.current) {
+        clearTimeout(speakingTimeoutRef.current);
       }
     };
   }, []);
@@ -116,42 +118,109 @@ export function useVoice(): UseVoiceReturn {
 
     // Cancel any ongoing speech
     window.speechSynthesis.cancel();
-
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = 0.95; // Slightly slower for clarity
-    utterance.pitch = 1.0;
-    utterance.volume = 1.0;
     
-    // Try to use a good voice
-    const voices = window.speechSynthesis.getVoices();
-    const preferredVoice = voices.find(v => v.lang.startsWith('en') && v.name.includes('Google')) 
-                        || voices.find(v => v.lang.startsWith('en'));
-    if (preferredVoice) {
-      utterance.voice = preferredVoice;
+    // Clear any existing timeout
+    if (speakingTimeoutRef.current) {
+      clearTimeout(speakingTimeoutRef.current);
+      speakingTimeoutRef.current = null;
     }
 
-    utterance.onstart = () => {
-      setIsSpeaking(true);
+    // Split long text into chunks (Chrome has ~200 char limit per utterance)
+    const chunkText = (text: string, maxLength: number = 200): string[] => {
+      const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
+      const chunks: string[] = [];
+      let currentChunk = '';
+
+      for (const sentence of sentences) {
+        if (currentChunk.length + sentence.length <= maxLength) {
+          currentChunk += sentence;
+        } else {
+          if (currentChunk) chunks.push(currentChunk.trim());
+          currentChunk = sentence;
+        }
+      }
+      
+      if (currentChunk) chunks.push(currentChunk.trim());
+      return chunks;
     };
 
-    utterance.onend = () => {
-      setIsSpeaking(false);
+    const chunks = chunkText(text);
+    let currentChunkIndex = 0;
+
+    const speakChunk = () => {
+      if (currentChunkIndex >= chunks.length) {
+        setIsSpeaking(false);
+        if (speakingTimeoutRef.current) {
+          clearTimeout(speakingTimeoutRef.current);
+          speakingTimeoutRef.current = null;
+        }
+        return;
+      }
+
+      const utterance = new SpeechSynthesisUtterance(chunks[currentChunkIndex]);
+      utterance.rate = 0.95;
+      utterance.pitch = 1.0;
+      utterance.volume = 1.0;
+
+      // Get voices (may need to wait for them to load)
+      const voices = window.speechSynthesis.getVoices();
+      if (voices.length > 0) {
+        const preferredVoice = voices.find(v => v.lang.startsWith('en') && v.name.includes('Google')) 
+                            || voices.find(v => v.lang.startsWith('en'));
+        if (preferredVoice) {
+          utterance.voice = preferredVoice;
+        }
+      }
+
+      utterance.onstart = () => {
+        setIsSpeaking(true);
+      };
+
+      utterance.onend = () => {
+        currentChunkIndex++;
+        // Small delay between chunks for natural flow
+        setTimeout(() => speakChunk(), 50);
+      };
+
+      utterance.onerror = (event) => {
+        console.error('Speech synthesis error:', event);
+        setIsSpeaking(false);
+        if (speakingTimeoutRef.current) {
+          clearTimeout(speakingTimeoutRef.current);
+          speakingTimeoutRef.current = null;
+        }
+      };
+
+      synthesisRef.current = utterance;
+      window.speechSynthesis.speak(utterance);
+
+      // Safety timeout: If speech doesn't end naturally, force stop
+      const estimatedDuration = (chunks[currentChunkIndex].length / 15) * 1000; // ~15 chars/sec
+      speakingTimeoutRef.current = setTimeout(() => {
+        console.warn('Speech timeout - forcing next chunk');
+        currentChunkIndex++;
+        speakChunk();
+      }, estimatedDuration + 2000); // Add 2s buffer
     };
 
-    utterance.onerror = (event) => {
-      setError('Speech synthesis error');
-      setIsSpeaking(false);
-      console.error(event);
-    };
-
-    synthesisRef.current = utterance;
-    window.speechSynthesis.speak(utterance);
+    // Wait for voices to load if needed
+    if (window.speechSynthesis.getVoices().length === 0) {
+      window.speechSynthesis.onvoiceschanged = () => {
+        speakChunk();
+      };
+    } else {
+      speakChunk();
+    }
   }, []);
 
   const stopSpeaking = useCallback(() => {
     if (window.speechSynthesis) {
       window.speechSynthesis.cancel();
       setIsSpeaking(false);
+    }
+    if (speakingTimeoutRef.current) {
+      clearTimeout(speakingTimeoutRef.current);
+      speakingTimeoutRef.current = null;
     }
   }, []);
 

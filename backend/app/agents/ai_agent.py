@@ -37,7 +37,7 @@ class AIAssistantAgent:
     def __init__(self):
         genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
         # Use gemini-1.5-flash for better free tier limits (1500/day vs 20/day)
-        self.model = genai.GenerativeModel('gemini-2.5-flash')
+        self.model = genai.GenerativeModel('gemini-2.5-flash-lite')
         self.tools = self._initialize_tools()
         self.conversation_history = []
         
@@ -168,7 +168,7 @@ class AIAssistantAgent:
                     }
             
             # Reduce iterations to save API quota (5 iterations = 5 API calls!)
-            max_iterations = 3
+            max_iterations = 5
             agent_scratchpad = []
             
             # Determine if tools are needed
@@ -447,18 +447,16 @@ Final Answer: [your response]"""
     async def _send_email(self, input_data: str) -> str:
         """Send email to a contact using alias"""
         try:
-            # Parse input (expecting JSON-like: {"alias": "john", "subject": "...", "body": "..."})
-            import json
+            print(f"📧 Email tool called with input: {input_data}")
             
-            # Try to parse as JSON first
+            # Parse input
             try:
                 data = json.loads(input_data)
                 alias = data.get('alias')
                 subject = data.get('subject')
                 body = data.get('body')
             except:
-                # Fallback: parse manually if not JSON
-                # Expected format: "alias: john, subject: Hello, body: How are you?"
+                # Fallback parsing
                 parts = {}
                 for part in input_data.split(','):
                     if ':' in part:
@@ -469,6 +467,8 @@ Final Answer: [your response]"""
                 subject = parts.get('subject')
                 body = parts.get('body')
             
+            print(f"📧 Parsed - Alias: {alias}, Subject: {subject}")
+            
             if not alias or not subject or not body:
                 return "Error: Missing required fields. Need: alias, subject, body"
             
@@ -476,7 +476,9 @@ Final Answer: [your response]"""
             contact = await contact_service.get_contact(alias)
             
             if not contact:
-                return f"Contact '{alias}' not found. Please ask user to add this contact first with their email address."
+                return f"Contact '{alias}' not found. Please ask user to add this contact first."
+            
+            print(f"📧 Found contact: {contact}")
             
             # Send email
             result = await email_service.send_email(
@@ -486,13 +488,18 @@ Final Answer: [your response]"""
                 to_alias=alias
             )
             
+            print(f"📧 Email result: {result}")
+            
             if result['success']:
-                return f"Successfully sent email to {alias} ({contact['email']}). Subject: {subject}"
+                # IMPORTANT: Return clear success message
+                return f"✅ Email sent successfully to {alias} ({contact['email']}). Subject: '{subject}'"
             else:
-                return f"Failed to send email: {result.get('error', 'Unknown error')}"
+                return f"❌ Failed to send email to {alias}: {result.get('error', 'Unknown error')}"
                 
         except Exception as e:
-            return f"Error sending email: {str(e)}"
+            import traceback
+            traceback.print_exc()
+            return f"❌ Error sending email: {str(e)}"
     
     async def _add_contact(self, input_data: str) -> str:
         """Add a new contact alias"""

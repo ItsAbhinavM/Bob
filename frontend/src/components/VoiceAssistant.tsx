@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Mic, MicOff, Video, VideoOff, MessageSquare, ScreenShare, PhoneOff } from 'lucide-react';
 import { useVoice } from '../lib/useVoice';
 import { chatAPI } from '../lib/api';
+import AudioVisualizer from './audioVisualizer';
 import Image from 'next/image';
 
 export default function VoiceAssistant() {
@@ -192,26 +193,15 @@ export default function VoiceAssistant() {
 
       {/* Main Content - Audio Visualizer */}
       <div className="flex-1 flex items-center justify-center">
-        {/* Audio Waveform Visualization */}
-        <div className="flex items-center justify-center gap-2 h-48">
-          {[...Array(5)].map((_, i) => (
-            <div
-              key={i}
-              className={`bg-white rounded-full transition-all duration-150 ${
-                isListening || isSpeaking || isProcessing ? 'animate-wave' : ''
-              }`}
-              style={{
-                width: i === 2 ? '24px' : i === 1 || i === 3 ? '20px' : '16px',
-                height: 
-                  isListening || isSpeaking || isProcessing
-                    ? i === 2 ? '160px' : i === 1 || i === 3 ? '120px' : '80px'
-                    : i === 2 ? '120px' : i === 1 || i === 3 ? '80px' : '40px',
-                animationDelay: `${i * 0.1}s`,
-                opacity: isListening || isSpeaking || isProcessing ? 1 : 0.4,
-              }}
-            />
-          ))}
-        </div>
+        <AudioVisualizer 
+          isActive={isListening || isSpeaking || isProcessing}
+          mode={
+            isListening ? 'listening' : 
+            isSpeaking ? 'speaking' : 
+            isProcessing ? 'processing' : 
+            'idle'
+          }
+        />
       </div>
 
       {/* User Camera Feed - Bottom Right */}
