@@ -11,6 +11,7 @@ from app.services.database import SessionLocal, Task
 from app.services.weather_services import weather_service
 from app.agents.tools.email_service import email_service
 from app.agents.tools.contact_service import contact_service
+from app.agents.tools.youtube_transcript import youtube_loader
 
 class Tool:
     """A tool that the agent can use"""
@@ -99,6 +100,16 @@ class AIAssistantAgent:
                 description="Lists all saved contacts. Use when user asks 'who are my contacts' or 'show contacts'. Input: 'all'",
                 func=self._list_contacts,
                 requires_input=False
+            ),
+            Tool(
+                name="Get_youtube_transcript",
+                func=self.get_youtube_transcript_tool,
+                description="Gets notes of youtube video. Use this when user provides a YouTube link."
+            ),
+            Tool(
+                name="Create_detailed_notes",
+                func=self.create_detailed_notes_tool,
+                description="Creates structured, detailed notes from a transcript. Use this after getting a YouTube transcript to format it into organized notes."
             ),
         ]
     
@@ -548,6 +559,39 @@ Final Answer: [your response]"""
             
         except Exception as e:
             return f"Error listing contacts: {str(e)}"
+        
+    async def get_youtube_transcript_tool(self,link: str)-> str:
+            """
+            Gets the transcript/notes from a YouTube video. 
+            Provide a valid YouTube URL (e.g., https://www.youtube.com/watch?v=VIDEO_ID or https://youtu.be/VIDEO_ID).
+            Returns detailed transcript with timestamps.
+            """
+            return youtube_loader(link)
+
+    async def create_detailed_notes_tool(self, transcript: str) -> str:
+            """
+            Creates detailed and structured notes from a YouTube video transcript.
+            """
+            notes_prompt = f"""
+            Please create detailed, well-structured notes from the following YouTube video transcript.
+            Organize the content into clear sections with:
+            - Main topics and subtopics
+            - Key points and important information
+            - Actionable insights if any
+            - Summary at the end
+
+            Transcript:
+            {transcript}
+
+            Please format the notes in a clear, readable structure with headings and bullet points.
+            """
+            
+            try:
+                # Use Gemini's generate_content method (not invoke)
+                response = self.model.generate_content(notes_prompt)
+                return response.text
+            except Exception as e:
+                return f"Error creating notes: {str(e)}"
 
 # Create global agent instance
 ai_agent = AIAssistantAgent()

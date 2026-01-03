@@ -3,6 +3,7 @@ uvicorn[standard]
 python-dotenv
 httpx
 sqlalchemy
+yt-dlp
 
 # Install these separately to avoid compilation
 pydantic
