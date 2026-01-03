@@ -12,6 +12,7 @@ from app.services.weather_services import weather_service
 from app.agents.tools.email_service import email_service
 from app.agents.tools.contact_service import contact_service
 from app.agents.tools.youtube_transcript import youtube_loader
+from app.agents.tools.discord_sharing import send_to_discord
 
 class Tool:
     """A tool that the agent can use"""
@@ -111,6 +112,11 @@ class AIAssistantAgent:
                 func=self.create_detailed_notes_tool,
                 description="Creates structured, detailed notes from a transcript. Use this after getting a YouTube transcript to format it into organized notes."
             ),
+            Tool(
+                name="Send through Discord",
+                func=self.send_to_discord_tool,
+                description="Send message through Discord"
+            )
         ]
     
     def _get_tools_description(self) -> str:
@@ -559,6 +565,9 @@ Final Answer: [your response]"""
             
         except Exception as e:
             return f"Error listing contacts: {str(e)}"
+    async def send_to_discord_tool(self,message: str)-> str:
+            """Send a message through Discord."""
+            return send_to_discord(message)
         
     async def get_youtube_transcript_tool(self,link: str)-> str:
             """
