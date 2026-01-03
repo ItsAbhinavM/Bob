@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Mic, MicOff, Settings, MessageSquare } from 'lucide-react';
+import { Mic, MicOff, Video, VideoOff, MessageSquare, ScreenShare, PhoneOff } from 'lucide-react';
 import { useVoice } from '../lib/useVoice';
 import { chatAPI } from '../lib/api';
 import Image from 'next/image';
@@ -15,18 +15,18 @@ export default function VoiceAssistant() {
     startListening,
     stopListening,
     speak,
-    stopSpeaking,
     isSupported,
   } = useVoice();
 
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [currentTranscript, setCurrentTranscript] = useState<string>('');
-  const [lastResponse, setLastResponse] = useState<string>('');
+  const [agentResponse, setAgentResponse] = useState<string>('');
+  const [cameraEnabled, setCameraEnabled] = useState(false);
   const [showTextInput, setShowTextInput] = useState(false);
   const [textInput, setTextInput] = useState('');
-  const [visualizerActive, setVisualizerActive] = useState(false);
-  const [conversationLog, setConversationLog] = useState<Array<{role: string, text: string, timestamp: Date}>>([]);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
 
   useEffect(() => {
     if (transcript && transcript !== currentTranscript) {
@@ -44,21 +44,61 @@ export default function VoiceAssistant() {
     }
   }, [currentTranscript, isListening, isProcessing]);
 
+  // Camera handling
   useEffect(() => {
-    setVisualizerActive(isListening || isSpeaking || isProcessing);
-  }, [isListening, isSpeaking, isProcessing]);
+    if (cameraEnabled) {
+      startCamera();
+    } else {
+      stopCamera();
+    }
+
+    return () => {
+      stopCamera();
+    };
+  }, [cameraEnabled]);
+
+  // Clear agent response when it stops speaking
+  useEffect(() => {
+    if (!isSpeaking && agentResponse) {
+      // Keep response visible for 2 seconds after speaking ends
+      const timer = setTimeout(() => {
+        setAgentResponse('');
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [isSpeaking, agentResponse]);
+
+  const startCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { width: 320, height: 180 },
+        audio: false 
+      });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+    } catch (err) {
+      console.error('Error accessing camera:', err);
+      setCameraEnabled(false);
+    }
+  };
+
+  const stopCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+  };
 
   const handleProcessVoice = async (message: string) => {
     if (!message.trim()) return;
 
     setIsProcessing(true);
-    
-    // Log user message
-    setConversationLog(prev => [...prev, {
-      role: 'user',
-      text: message,
-      timestamp: new Date()
-    }]);
+    setAgentResponse(''); // Clear previous response
 
     try {
       const response = await chatAPI.send({
@@ -70,22 +110,16 @@ export default function VoiceAssistant() {
         setConversationId(response.conversation_id);
       }
 
-      setLastResponse(response.response);
+      // Set agent response for caption display
+      setAgentResponse(response.response);
       
-      // Log assistant response
-      setConversationLog(prev => [...prev, {
-        role: 'assistant',
-        text: response.response,
-        timestamp: new Date()
-      }]);
-
-      // Speak response
+      // Speak the response
       speak(response.response);
       
     } catch (err: any) {
       console.error('Error:', err);
       const errorMsg = "I encountered an error. Please try again.";
-      setLastResponse(errorMsg);
+      setAgentResponse(errorMsg);
       speak(errorMsg);
     } finally {
       setIsProcessing(false);
@@ -97,7 +131,7 @@ export default function VoiceAssistant() {
       stopListening();
     } else {
       setCurrentTranscript('');
-      setLastResponse('');
+      setAgentResponse(''); // Clear agent response when starting to listen
       startListening();
     }
   };
@@ -111,198 +145,244 @@ export default function VoiceAssistant() {
     }
   };
 
+  const handleEndCall = () => {
+    stopListening();
+    stopCamera();
+    window.location.reload();
+  };
+
   if (!isSupported) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-900">
-        <div className="text-center text-white p-8 bg-red-900/30 rounded-lg max-w-md">
+      <div className="flex items-center justify-center min-h-screen bg-black">
+        <div className="text-center text-white p-8">
           <h2 className="text-2xl font-bold mb-4">Browser Not Supported</h2>
-          <p className="text-gray-300">
-            Please use Chrome, Edge, or Safari for voice features.
-          </p>
+          <p className="text-gray-400">Please use Chrome, Edge, or Safari.</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col min-h-screen bg-black text-white">
-      {/* Header */}
-      <header className="flex items-center justify-between px-8 py-4 border-b border-gray-800">
+    <div className="relative flex flex-col min-h-screen bg-[#0a0a0a] text-white">
+      <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-6 py-4">
         <div className="flex items-center gap-3">
-            <Image src={'/assets/bob-logo.png'} alt='logo image' width={50} height={30} className='rounded-lg'/>
-          <div>
-            <h1 className="text-lg font-semibold">Bob</h1>
-            <p className="text-xs text-gray-400">I can talk</p>
-          </div>
-        </div>
-        
-        <div className="flex items-center gap-4">
-          <button
-            onClick={() => setShowTextInput(!showTextInput)}
-            className="p-2 hover:bg-gray-800 rounded-lg transition-colors"
-            title="Text input"
-          >
-            <MessageSquare className="w-5 h-5 text-gray-400" />
-          </button>
-          <button className="p-2 hover:bg-gray-800 rounded-lg transition-colors">
-            <Settings className="w-5 h-5 text-gray-400" />
-          </button>
-        </div>
-      </header>
-
-      {/* Main Voice Interface */}
-      <div className="flex-1 flex flex-col items-center justify-center p-8">
-        {/* Status Text */}
-        <div className="mb-8 text-center">
-          <p className="text-sm text-gray-400 mb-2">
-            {isListening ? 'Listening...' : 
-             isSpeaking ? 'Bob is speaking...' :
-             isProcessing ? 'Processing...' :
-             'Ready to assist'}
-          </p>
-          
-          {/* Current Transcript Display */}
-          {currentTranscript && (
-            <div className="mt-4 px-6 py-3 bg-blue-900/30 border border-blue-700/50 rounded-lg max-w-2xl">
-              <p className="text-blue-200 italic">"{currentTranscript}"</p>
-            </div>
-          )}
-          
-          {/* Last Response Display */}
-          {lastResponse && !currentTranscript && (
-            <div className="mt-4 px-6 py-3 bg-gray-800/50 border border-gray-700 rounded-lg max-w-2xl">
-              <p className="text-gray-200">{lastResponse}</p>
-            </div>
-          )}
+          <Image 
+            src="/assets/pixelated-logo.png" 
+            alt="Bob Logo" 
+            width={50}
+            height={30}
+            quality={100}
+            className="rounded-lg"
+          />
+          <Image 
+            src="/assets/Bob.png" 
+            alt="Bob Name" 
+            width={110}
+            height={90}
+            quality={100}
+            className="rounded-lg"
+          />
         </div>
 
-        {/* Audio Visualizer / Avatar */}
-        <div className="relative mb-12">
-          {/* Animated circles when active */}
-          {visualizerActive && (
-            <>
-              <div className="absolute inset-0 -m-8 bg-blue-500/20 rounded-full animate-ping" />
-              <div className="absolute inset-0 -m-4 bg-blue-500/30 rounded-full animate-pulse" />
-            </>
-          )}
-          
-          {/* Center Circle */}
-          <div className={`relative w-48 h-48 rounded-full flex items-center justify-center transition-all duration-300 ${
-            visualizerActive 
-              ? 'bg-gradient-to-br from-blue-500 to-purple-600 shadow-2xl shadow-blue-500/50' 
-              : 'bg-gray-800 border-4 border-gray-700'
-          }`}>
-            {/* Waveform visualization */}
-            {visualizerActive ? (
-              <div className="flex items-center gap-1 h-16">
-                {[...Array(5)].map((_, i) => (
-                  <div
-                    key={i}
-                    className="w-1 bg-white rounded-full animate-pulse"
-                    style={{
-                      height: `${20 + Math.random() * 40}px`,
-                      animationDelay: `${i * 0.1}s`,
-                      animationDuration: '0.6s'
-                    }}
-                  />
-                ))}
+        {/* Built with tag */}
+        <div className="text-[10px] text-gray-500 tracking-wider">
+          Voice assistant agent, This thing can talk!
+        </div>
+      </div>
+
+      {/* Main Content - Audio Visualizer */}
+      <div className="flex-1 flex items-center justify-center">
+        {/* Audio Waveform Visualization */}
+        <div className="flex items-center justify-center gap-2 h-48">
+          {[...Array(5)].map((_, i) => (
+            <div
+              key={i}
+              className={`bg-white rounded-full transition-all duration-150 ${
+                isListening || isSpeaking || isProcessing ? 'animate-wave' : ''
+              }`}
+              style={{
+                width: i === 2 ? '24px' : i === 1 || i === 3 ? '20px' : '16px',
+                height: 
+                  isListening || isSpeaking || isProcessing
+                    ? i === 2 ? '160px' : i === 1 || i === 3 ? '120px' : '80px'
+                    : i === 2 ? '120px' : i === 1 || i === 3 ? '80px' : '40px',
+                animationDelay: `${i * 0.1}s`,
+                opacity: isListening || isSpeaking || isProcessing ? 1 : 0.4,
+              }}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* User Camera Feed - Bottom Right */}
+      <div className="absolute bottom-24 right-6 z-20">
+        <div className="relative w-48 h-36 bg-gray-900 rounded-lg overflow-hidden border border-gray-800">
+          {cameraEnabled ? (
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center">
+              <div className="relative w-full h-full">
+                <Image 
+                  src="/assets/user.png" 
+                  alt="Persona" 
+                  fill
+                  quality={100}
+                  className="rounded-lg"
+                />
               </div>
-            ) : (
-              <div className="text-6xl">🎙️</div>
-            )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Bottom Control Bar */}
+      <div className="absolute bottom-0 left-0 right-0 z-30 pb-6">
+        <div className="max-w-2xl mx-auto px-6">
+          <div className="flex items-center justify-between bg-[#1a1a1a] rounded-2xl px-4 py-3 border border-gray-800">
+            {/* Left Controls */}
+            <div className="flex items-center gap-3">
+              {/* Microphone */}
+              <div className="relative">
+                <button
+                  onClick={handleVoiceToggle}
+                  disabled={isProcessing || isSpeaking}
+                  className={`p-3 rounded-lg transition-all ${
+                    isListening
+                      ? 'bg-transparent hover:bg-gray-800 border border-green-500'
+                      : 'bg-transparent hover:bg-gray-800'
+                  } disabled:opacity-50`}
+                >
+                  {isListening ? (
+                    <Mic className="w-5 h-5" />
+                  ) : (
+                    <MicOff className="w-5 h-5" />
+                  )}
+                </button>
+                {/* Dropdown indicator */}
+                <button className="absolute -right-2 top-1/2 -translate-y-1/2 p-1">
+                  <svg className="w-3 h-3 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Camera */}
+              <div className="relative">
+                <button
+                  onClick={() => setCameraEnabled(!cameraEnabled)}
+                  className="p-3 rounded-lg bg-transparent hover:bg-gray-800 transition-all"
+                >
+                  {cameraEnabled ? (
+                    <Video className="w-5 h-5" />
+                  ) : (
+                    <VideoOff className="w-5 h-5" />
+                  )}
+                </button>
+                <button className="absolute -right-2 top-1/2 -translate-y-1/2 p-1">
+                  <svg className="w-3 h-3 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                  </svg>
+                </button>
+              </div>
+
+              <button className="p-3 rounded-lg bg-transparent hover:bg-gray-800 transition-all">
+                <ScreenShare className="w-5 h-5" />
+              </button>
+
+              {/* Text Chat */}
+              <button
+                onClick={() => setShowTextInput(!showTextInput)}
+                className="p-3 rounded-lg bg-transparent hover:bg-gray-800 transition-all"
+              >
+                <MessageSquare className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Right Control - End Call */}
+            <button
+              onClick={handleEndCall}
+              className="flex items-center gap-2 px-5 py-2.5 bg-red-600 hover:bg-red-700 rounded-lg transition-all"
+            >
+              <PhoneOff className="w-4 h-4" />
+              <span className="text-sm font-medium">END CALL</span>
+            </button>
           </div>
         </div>
+      </div>
 
-        {/* Main Microphone Button */}
-        <button
-          onClick={handleVoiceToggle}
-          disabled={isProcessing || isSpeaking}
-          className={`relative px-12 py-4 rounded-full font-semibold text-lg transition-all duration-300 ${
-            isListening
-              ? 'bg-red-600 hover:bg-red-700 shadow-lg shadow-red-500/50'
-              : 'bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-500/50'
-          } disabled:opacity-50 disabled:cursor-not-allowed`}
-        >
-          <div className="flex items-center gap-3">
-            {isListening ? (
-              <>
-                <MicOff className="w-6 h-6" />
-                <span>Stop Listening</span>
-              </>
-            ) : (
-              <>
-                <Mic className="w-6 h-6" />
-                <span>Start Conversation</span>
-              </>
-            )}
-          </div>
-        </button>
-
-        {/* Helper Text */}
-        {!isListening && !isProcessing && !isSpeaking && (
-          <div className="mt-8 text-center text-gray-400 text-sm max-w-md">
-            <p>Click the button and speak naturally.</p>
-            <p className="mt-2">Try: "What's the weather?" or "Add a task to buy groceries"</p>
-          </div>
-        )}
-
-        {/* Text Input (Hidden by default) */}
-        {showTextInput && (
-          <form onSubmit={handleTextSubmit} className="mt-8 w-full max-w-2xl">
-            <div className="flex gap-2 bg-gray-800 rounded-lg p-2 border border-gray-700">
+      {/* Text Input Modal */}
+      {showTextInput && (
+        <div className="absolute bottom-32 left-1/2 -translate-x-1/2 w-96 z-40">
+          <div className="bg-[#1a1a1a] rounded-xl border border-gray-800 p-4 shadow-2xl">
+            <form onSubmit={handleTextSubmit} className="flex gap-2">
               <input
                 type="text"
                 value={textInput}
                 onChange={(e) => setTextInput(e.target.value)}
-                placeholder="Type your message..."
-                className="flex-1 bg-transparent px-4 py-2 text-white placeholder-gray-500 focus:outline-none"
+                placeholder="Type a message..."
+                className="flex-1 bg-transparent border border-gray-700 rounded-lg px-4 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-gray-600"
                 autoFocus
               />
               <button
                 type="submit"
                 disabled={!textInput.trim()}
-                className="px-6 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all"
               >
                 Send
               </button>
-            </div>
-          </form>
-        )}
-      </div>
+            </form>
+          </div>
+        </div>
+      )}
 
-      {/* Conversation Log (Collapsible) */}
-      {conversationLog.length > 0 && (
-        <div className="border-t border-gray-800 bg-gray-900/50">
-          <details className="group">
-            <summary className="px-8 py-4 cursor-pointer text-sm text-gray-400 hover:text-gray-300 flex items-center justify-between">
-              <span>Conversation History ({conversationLog.length} messages)</span>
-              <span className="group-open:rotate-180 transition-transform">▼</span>
-            </summary>
-            <div className="px-8 pb-4 max-h-64 overflow-y-auto space-y-2">
-              {conversationLog.map((msg, idx) => (
-                <div
-                  key={idx}
-                  className={`text-xs p-3 rounded ${
-                    msg.role === 'user' 
-                      ? 'bg-blue-900/30 text-blue-200' 
-                      : 'bg-gray-800 text-gray-300'
-                  }`}
-                >
-                  <span className="font-semibold">
-                    {msg.role === 'user' ? 'You' : 'Bob'}:
-                  </span>{' '}
-                  {msg.text}
-                </div>
-              ))}
-            </div>
-          </details>
+      {/* User Transcript Display (what you said) */}
+      {currentTranscript && !agentResponse && (
+        <div className="absolute top-24 left-1/2 -translate-x-1/2 max-w-2xl w-full px-6 z-20">
+          <div className="bg-black/80 backdrop-blur-sm border border-blue-800 rounded-lg px-6 py-4">
+            <p className="text-sm text-blue-400 mb-1">You said:</p>
+            <p className="text-white">{currentTranscript}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Agent Response Display (what Bob is saying) */}
+      {agentResponse && (isSpeaking || isProcessing) && (
+        <div className="absolute top-24 left-1/2 -translate-x-1/2 max-w-2xl w-full px-6 z-20">
+          <div className="bg-black/80 backdrop-blur-sm border border-green-800 rounded-lg px-6 py-4">
+            <p className="text-sm text-green-400 mb-1">Bob:</p>
+            <p className="text-white">{agentResponse}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Status Indicator */}
+      {(isListening || isSpeaking || isProcessing) && (
+        <div className="absolute top-24 left-6 z-20">
+          <div className="flex items-center gap-2 bg-black/80 backdrop-blur-sm border border-gray-800 rounded-full px-4 py-2">
+            <div className={`w-2 h-2 rounded-full animate-pulse ${
+              isListening ? 'bg-blue-500' : 
+              isSpeaking ? 'bg-green-500' : 
+              'bg-yellow-500'
+            }`} />
+            <span className="text-xs text-gray-400">
+              {isListening ? 'Listening' : isSpeaking ? 'Speaking' : 'Processing'}
+            </span>
+          </div>
         </div>
       )}
 
       {/* Error Display */}
       {voiceError && (
-        <div className="fixed bottom-4 right-4 bg-red-900/90 border border-red-700 rounded-lg px-6 py-3 max-w-md">
-          <p className="text-red-200 text-sm">{voiceError}</p>
+        <div className="absolute top-6 left-1/2 -translate-x-1/2 z-50">
+          <div className="bg-red-900/90 backdrop-blur-sm border border-red-700 rounded-lg px-6 py-3">
+            <p className="text-red-200 text-sm">{voiceError}</p>
+          </div>
         </div>
       )}
     </div>
