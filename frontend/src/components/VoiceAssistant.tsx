@@ -168,14 +168,14 @@ export default function VoiceAssistant() {
     <div className="relative flex flex-col min-h-screen bg-[#0a0a0a] text-white">
       <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-6 py-4">
         <div className="flex items-center gap-3">
-          <Image 
+          {/* <Image 
             src="/assets/pixelated-logo.png" 
             alt="Bob Logo" 
             width={50}
             height={30}
             quality={100}
             className="rounded-lg"
-          />
+          /> */}
           <Image 
             src="/assets/Bob.png" 
             alt="Bob Name" 
@@ -188,7 +188,7 @@ export default function VoiceAssistant() {
 
         {/* Built with tag */}
         <div className="text-[10px] text-gray-500 tracking-wider">
-          Voice assistant agent, This thing can talk!
+          Be careful with him, This thing can talk!
         </div>
       </div>
 
@@ -205,7 +205,6 @@ export default function VoiceAssistant() {
         />
       </div>
 
-      {/* User Camera Feed - Bottom Right */}
       <FloatingVideoEye />
 
       {/* Bottom Control Bar */}

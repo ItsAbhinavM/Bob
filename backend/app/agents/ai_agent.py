@@ -13,6 +13,7 @@ from app.agents.tools.email_service import email_service
 from app.agents.tools.contact_service import contact_service
 from app.agents.tools.stack_overflow_search import stackoverflow_service
 from app.agents.tools.github_services import github_service
+from app.agents.tools.readme_generator import get_readme_generator
 from app.agents.tools.youtube_transcript import youtube_loader
 from app.agents.tools.discord_sharing import send_to_discord
 
@@ -144,6 +145,12 @@ class AIAssistantAgent:
                 func=self._list_my_repos,
                 requires_input=False
             ),
+            Tool(
+                name="generate_readme",
+                description="Generate a professional README.md file for a GitHub repository. Use when user says 'create readme', 'generate readme', or provides a repo to document. Input: repository in format 'owner/repo' or GitHub URL (e.g., 'facebook/react' or 'https://github.com/microsoft/vscode')",
+                func=self._generate_readme,
+                requires_input=True
+            ),
         ]
     
     def _get_tools_description(self) -> str:
@@ -164,6 +171,7 @@ class AIAssistantAgent:
             'contact': ['contact', 'alias', 'save contact', 'add contact'],
             'stackoverflow': ['how to', 'how do i', 'error', 'debug', 'fix', 'code', 'python', 'javascript', 'react', 'fastapi', 'api', 'function', 'syntax', 'stackoverflow'],
             'github': ['github', 'issue', 'bug', 'repository', 'repo', 'pull request', 'pr'],
+            'readme': ["readme", "generate readme", "create readme", "documentation", "document my repo"],
         }
         
         message_lower = message.lower()
@@ -751,6 +759,26 @@ class AIAssistantAgent:
             
         except Exception as e:
             return f"Error listing repositories: {str(e)}"
+        
+    async def _generate_readme(self, repo_input: str) -> str:
+        """
+        Generate a professional README.md for a GitHub repository        
+        Args:
+            repo_input: Repository in format 'owner/repo' or GitHub URL        
+        Returns:
+            Generated README.md content
+        """
+        try:
+            generator = get_readme_generator()
+            readme_content = generator.generate_readme(repo_input)
+            
+            with open("GENERATED_README.md", "w", encoding="utf-8") as f:
+                f.write(readme_content)
+            
+            return f"README generated successfully!\n\n{readme_content[:500]}...\n\n(Full README saved to GENERATED_README.md)"
+        
+        except Exception as e:
+            return f"Failed to generate README: {str(e)}"
     
     async def _search_stackoverflow(self, query: str) -> str:
         """Search Stack Overflow and return formatted results"""
