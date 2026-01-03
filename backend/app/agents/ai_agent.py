@@ -12,6 +12,7 @@ from app.services.weather_services import weather_service
 from app.agents.tools.email_service import email_service
 from app.agents.tools.contact_service import contact_service
 from app.agents.tools.stack_overflow_search import stackoverflow_service
+from app.agents.tools.github_services import github_service
 from app.agents.tools.youtube_transcript import youtube_loader
 from app.agents.tools.discord_sharing import send_to_discord
 
@@ -125,6 +126,24 @@ class AIAssistantAgent:
                 func=self._search_stackoverflow,
                 requires_input=True
             ),
+            Tool(
+                name="create_github_issue",
+                description="Create a GitHub issue in a repository. Use when user wants to report a bug, create a task, or log an issue. Input: JSON with 'title' (required), 'body' (optional), 'labels' (optional list), 'repo' (optional, defaults to configured repo)",
+                func=self._create_github_issue,
+                requires_input=True
+            ),
+            Tool(
+                name="list_github_issues",
+                description="List GitHub issues from a repository. Use when user asks about their issues, open bugs, or tickets. Input: JSON with 'state' ('open', 'closed', or 'all'), 'repo' (optional)",
+                func=self._list_github_issues,
+                requires_input=False
+            ),
+            Tool(
+                name="list_my_repos",
+                description="List user's GitHub repositories. Use when user asks 'what are my repos' or 'show my repositories'. Input: 'all'",
+                func=self._list_my_repos,
+                requires_input=False
+            ),
         ]
     
     def _get_tools_description(self) -> str:
@@ -144,6 +163,7 @@ class AIAssistantAgent:
             'email': ['email', 'send', 'mail', 'message'],
             'contact': ['contact', 'alias', 'save contact', 'add contact'],
             'stackoverflow': ['how to', 'how do i', 'error', 'debug', 'fix', 'code', 'python', 'javascript', 'react', 'fastapi', 'api', 'function', 'syntax', 'stackoverflow'],
+            'github': ['github', 'issue', 'bug', 'repository', 'repo', 'pull request', 'pr'],
         }
         
         message_lower = message.lower()
@@ -616,6 +636,121 @@ class AIAssistantAgent:
             
         except Exception as e:
             return f"Error listing contacts: {str(e)}"
+        
+
+
+    async def _create_github_issue(self, input_data: str) -> str:
+        """Create a GitHub issue"""
+        try:
+            print(f"🐙 GitHub issue creation called with: {input_data}")
+            
+            # Parse input
+            import json
+            try:
+                data = json.loads(input_data)
+                title = data.get('title')
+                body = data.get('body')
+                labels = data.get('labels', [])
+                repo = data.get('repo')
+            except:
+                # Fallback: treat entire input as title
+                title = input_data
+                body = None
+                labels = []
+                repo = None
+            
+            if not title:
+                return "Error: Issue title is required. Example: create_github_issue with title: 'Fix login bug'"
+            
+            print(f"🐙 Creating issue: {title}")
+            
+            # Create issue
+            result = await github_service.create_issue(
+                title=title,
+                body=body,
+                labels=labels,
+                repo_name=repo
+            )
+            
+            if not result["success"]:
+                return f"Failed to create GitHub issue: {result.get('error', 'Unknown error')}"
+            
+            return f"✅ GitHub issue #{result['issue_number']} created successfully in {result['repo']}: '{result['title']}'. View at: {result['url']}"
+            
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return f"Error creating GitHub issue: {str(e)}"
+
+    async def _list_github_issues(self, input_data: str = "") -> str:
+        """List GitHub issues"""
+        try:
+            print(f"🐙 Listing GitHub issues")
+            
+            state = "open"
+            repo = None
+            
+            if input_data:
+                import json
+                try:
+                    data = json.loads(input_data)
+                    state = data.get('state', 'open')
+                    repo = data.get('repo')
+                except:
+                    # Check if input contains state keywords
+                    if 'closed' in input_data.lower():
+                        state = 'closed'
+                    elif 'all' in input_data.lower():
+                        state = 'all'
+            
+            result = await github_service.list_issues(state=state, repo_name=repo)
+            
+            if not result["success"]:
+                return f"Failed to list GitHub issues: {result.get('error', 'Unknown error')}"
+            
+            if result["count"] == 0:
+                return f"No {state} issues found in {result['repo']}"
+            
+            # Format issues
+            response = f"Found {result['count']} {state} issues in {result['repo']}:\n\n"
+            
+            for issue in result["issues"]:
+                labels_str = f" [{', '.join(issue['labels'])}]" if issue['labels'] else ""
+                response += f"#{issue['number']}: {issue['title']}{labels_str}\n"
+                response += f"  Status: {issue['state']}, Created: {issue['created_at']}\n"
+                response += f"  URL: {issue['url']}\n\n"
+            
+            return response
+            
+        except Exception as e:
+            return f"Error listing GitHub issues: {str(e)}"
+
+    async def _list_my_repos(self, _: str = "") -> str:
+        """List user's GitHub repositories"""
+        try:
+            print(f"🐙 Listing user repositories")
+            
+            result = await github_service.get_my_repos()
+            
+            if not result["success"]:
+                return f"Failed to list repositories: {result.get('error', 'Unknown error')}"
+            
+            if result["count"] == 0:
+                return "No repositories found"
+            
+            response = f"Found {result['count']} repositories:\n\n"
+            
+            for repo in result["repos"]:
+                privacy = "🔒 Private" if repo["private"] else "🌐 Public"
+                response += f"{repo['name']} ({privacy})\n"
+                response += f"  ⭐ {repo['stars']} stars\n"
+                response += f"  {repo['description']}\n"
+                response += f"  {repo['url']}\n\n"
+            
+            return response
+            
+        except Exception as e:
+            return f"Error listing repositories: {str(e)}"
     
     async def _search_stackoverflow(self, query: str) -> str:
         """Search Stack Overflow and return formatted results"""

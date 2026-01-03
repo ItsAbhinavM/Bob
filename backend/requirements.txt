@@ -4,6 +4,7 @@ python-dotenv
 httpx
 sqlalchemy
 yt-dlp
+PyGithub
 
 # Install these separately to avoid compilation
 pydantic
