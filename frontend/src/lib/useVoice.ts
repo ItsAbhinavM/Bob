@@ -33,8 +33,9 @@ export function useVoice(): UseVoiceReturn {
     if (supported && !recognitionRef.current) {
       const recognition = new SpeechRecognition();
       recognition.continuous = false;
-      recognition.interimResults = false;
+      recognition.interimResults = true; 
       recognition.lang = 'en-US';
+      recognition.maxAlternatives = 1;
 
       recognition.onstart = () => {
         setIsListening(true);
@@ -42,12 +43,18 @@ export function useVoice(): UseVoiceReturn {
       };
 
       recognition.onresult = (event: SpeechRecognitionEvent) => {
-        const transcript = event.results[0][0].transcript;
+        const current = event.resultIndex;
+        const transcript = event.results[current][0].transcript;
+        
+        // Update transcript in real-time
         setTranscript(transcript);
       };
 
       recognition.onerror = (event: any) => {
-        setError(event.error);
+        console.error('Speech recognition error:', event.error);
+        if (event.error !== 'no-speech') {
+          setError(`Recognition error: ${event.error}`);
+        }
         setIsListening(false);
       };
 
@@ -78,9 +85,20 @@ export function useVoice(): UseVoiceReturn {
       setTranscript('');
       setError(null);
       recognitionRef.current.start();
-    } catch (err) {
-      setError('Failed to start listening');
-      console.error(err);
+    } catch (err: any) {
+      if (err.message.includes('already started')) {
+        recognitionRef.current.stop();
+        setTimeout(() => {
+          try {
+            recognitionRef.current?.start();
+          } catch (e) {
+            console.error('Failed to restart recognition:', e);
+          }
+        }, 100);
+      } else {
+        setError('Failed to start listening');
+        console.error(err);
+      }
     }
   }, []);
 
@@ -96,12 +114,21 @@ export function useVoice(): UseVoiceReturn {
       return;
     }
 
+    // Cancel any ongoing speech
     window.speechSynthesis.cancel();
 
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = 1.0;
+    utterance.rate = 0.95; // Slightly slower for clarity
     utterance.pitch = 1.0;
     utterance.volume = 1.0;
+    
+    // Try to use a good voice
+    const voices = window.speechSynthesis.getVoices();
+    const preferredVoice = voices.find(v => v.lang.startsWith('en') && v.name.includes('Google')) 
+                        || voices.find(v => v.lang.startsWith('en'));
+    if (preferredVoice) {
+      utterance.voice = preferredVoice;
+    }
 
     utterance.onstart = () => {
       setIsSpeaking(true);
