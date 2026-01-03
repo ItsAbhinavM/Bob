@@ -8,6 +8,7 @@ import AudioVisualizer from './audioVisualizer';
 import Image from 'next/image';
 import FloatingVideoEye from './floatingVideo';
 import MessageContent from './markdownRendered';
+import TextInputBar from './textInputBar';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -33,7 +34,6 @@ export default function VoiceAssistant() {
   const [agentResponse, setAgentResponse] = useState<string>('');
   const [cameraEnabled, setCameraEnabled] = useState(false);
   const [showTextInput, setShowTextInput] = useState(false);
-  const [textInput, setTextInput] = useState('');
   const [showHistory, setShowHistory] = useState(false);
   const [chatHistory, setChatHistory] = useState<Message[]>([]);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -101,7 +101,6 @@ export default function VoiceAssistant() {
     setIsProcessing(true);
     setAgentResponse('');
 
-    // Add user message to history
     const userMessage: Message = {
       role: 'user',
       content: message,
@@ -119,7 +118,6 @@ export default function VoiceAssistant() {
         setConversationId(response.conversation_id);
       }
 
-      // Add assistant response to history
       const assistantMessage: Message = {
         role: 'assistant',
         content: response.response,
@@ -156,13 +154,8 @@ export default function VoiceAssistant() {
     }
   };
 
-  const handleTextSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (textInput.trim()) {
-      handleProcessVoice(textInput);
-      setTextInput('');
-      setShowTextInput(false);
-    }
+  const handleTextSubmit = (message: string) => {
+    handleProcessVoice(message);
   };
 
   const handleClearChat = () => {
@@ -204,7 +197,6 @@ export default function VoiceAssistant() {
           />
         </div>
 
-        {/* History Toggle Button */}
         <button
           onClick={() => setShowHistory(!showHistory)}
           className="flex items-center gap-2 px-4 py-2 bg-[#1a1a1a] hover:bg-[#2a2a2a] border border-white/10 rounded-full transition-all"
@@ -240,7 +232,6 @@ export default function VoiceAssistant() {
           showHistory ? 'translate-x-0' : 'translate-x-full'
         }`}
       >
-        {/* History Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
           <h2 className="text-lg font-semibold">Conversation History</h2>
           <div className="flex items-center gap-2">
@@ -260,12 +251,11 @@ export default function VoiceAssistant() {
           </div>
         </div>
 
-        {/* Chat History */}
         <div className="h-[calc(100vh-80px)] overflow-y-auto px-4 py-4 space-y-4">
           {chatHistory.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-center">
               <History className="w-12 h-12 text-gray-600 mb-4" />
-              <p className="text-gray-500 text-sm">No conversation history yet :(</p>
+              <p className="text-gray-500 text-sm">No conversation history yet</p>
               <p className="text-gray-600 text-xs mt-2">Start talking to Bob to see messages here</p>
             </div>
           ) : (
@@ -282,9 +272,7 @@ export default function VoiceAssistant() {
                         : 'bg-[#1a1a1a] text-gray-100 border border-white/10 rounded-bl-sm'
                     }`}
                   >
-                    {/* Use MessageContent component for markdown rendering */}
                     <MessageContent content={msg.content} role={msg.role} />
-                    
                     <p className={`text-[10px] mt-2 ${
                       msg.role === 'user' ? 'text-blue-200' : 'text-gray-500'
                     }`}>
@@ -298,6 +286,15 @@ export default function VoiceAssistant() {
           )}
         </div>
       </div>
+
+      {/* Text Input Bar (Conditional) */}
+      {showTextInput && (
+        <TextInputBar 
+          onSubmit={handleTextSubmit}
+          isProcessing={isProcessing}
+          onClose={() => setShowTextInput(false)}
+        />
+      )}
 
       {/* Bottom Control Bar */}
       <div className="absolute bottom-0 left-0 right-0 z-30">
@@ -358,10 +355,14 @@ export default function VoiceAssistant() {
                 <ScreenShare className="w-5 h-5" />
               </button>
 
-              {/* Text Chat */}
+              {/* Text Chat - Toggles Input Bar */}
               <button
                 onClick={() => setShowTextInput(!showTextInput)}
-                className="p-4 bg-[#2a2a2a] rounded-full hover:bg-white/5 transition-all text-white"
+                className={`p-4 rounded-full transition-all ${
+                  showTextInput 
+                    ? 'bg-white/10 text-green-400'
+                      : 'bg-[#2a2a2a] text-white hover:bg-white/5'
+                }`}
               >
                 <MessageSquare className="w-5 h-5" />
               </button>
@@ -378,31 +379,6 @@ export default function VoiceAssistant() {
           </div>
         </div>
       </div>
-
-      {/* Text Input Modal */}
-      {showTextInput && (
-        <div className="absolute bottom-32 left-1/2 -translate-x-1/2 w-96 z-40">
-          <div className="bg-[#1a1a1a] rounded-xl border border-gray-800 p-4 shadow-2xl">
-            <form onSubmit={handleTextSubmit} className="flex gap-2">
-              <input
-                type="text"
-                value={textInput}
-                onChange={(e) => setTextInput(e.target.value)}
-                placeholder="Type a message..."
-                className="flex-1 bg-transparent border border-gray-700 rounded-lg px-4 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-gray-600"
-                autoFocus
-              />
-              <button
-                type="submit"
-                disabled={!textInput.trim()}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-              >
-                Send
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
 
       {/* User Transcript Display (what you said) */}
       {currentTranscript && !agentResponse && (
