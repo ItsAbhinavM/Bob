@@ -205,8 +205,8 @@ export default function VoiceAssistant() {
       </div>
 
       {/* User Camera Feed - Bottom Right */}
-      <div className="absolute bottom-24 right-6 z-20">
-        <div className="relative w-48 h-36 bg-gray-900 rounded-lg overflow-hidden border border-gray-800">
+      <div className="absolute bottom-40 right-6 z-20">
+        <div className="relative w-48 h-36 bg-gray-900 rounded-xl overflow-hidden border-4 border-gray-700">
           {cameraEnabled ? (
             <video
               ref={videoRef}
@@ -232,20 +232,21 @@ export default function VoiceAssistant() {
       </div>
 
       {/* Bottom Control Bar */}
-      <div className="absolute bottom-0 left-0 right-0 z-30 pb-6">
-        <div className="max-w-2xl mx-auto px-6">
-          <div className="flex items-center justify-between bg-[#1a1a1a] rounded-2xl px-4 py-3 border border-gray-800">
-            {/* Left Controls */}
-            <div className="flex items-center gap-3">
-              {/* Microphone */}
-              <div className="relative">
+      <div className="absolute bottom-0 left-0 right-0 z-30">
+        <div className="w-full px-8 pb-8">
+          <div className="flex items-center justify-between bg-[#1a1a1a]/95 backdrop-blur-xl rounded-3xl px-8 py-4 border border-white/10 shadow-2xl">
+            
+            {/* Left Section - Controls */}
+            <div className="flex items-center gap-2">
+              {/* Microphone with Dropdown */}
+              <div className="flex items-center bg-[#2a2a2a] rounded-full">
                 <button
                   onClick={handleVoiceToggle}
                   disabled={isProcessing || isSpeaking}
-                  className={`p-3 rounded-lg transition-all ${
+                  className={`p-4 rounded-l-full transition-all ${
                     isListening
-                      ? 'bg-transparent hover:bg-gray-800 border border-green-500'
-                      : 'bg-transparent hover:bg-gray-800'
+                      ? 'bg-white/10 text-green-400'
+                      : 'text-white hover:bg-white/5'
                   } disabled:opacity-50`}
                 >
                   {isListening ? (
@@ -254,19 +255,22 @@ export default function VoiceAssistant() {
                     <MicOff className="w-5 h-5" />
                   )}
                 </button>
-                {/* Dropdown indicator */}
-                <button className="absolute -right-2 top-1/2 -translate-y-1/2 p-1">
+                <button className="px-2 py-4 rounded-r-full hover:bg-white/5 transition-all">
                   <svg className="w-3 h-3 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
                   </svg>
                 </button>
               </div>
 
-              {/* Camera */}
-              <div className="relative">
+              {/* Camera with Dropdown */}
+              <div className="flex items-center bg-[#2a2a2a] rounded-full">
                 <button
                   onClick={() => setCameraEnabled(!cameraEnabled)}
-                  className="p-3 rounded-lg bg-transparent hover:bg-gray-800 transition-all"
+                  className={`p-4 rounded-l-full transition-all ${
+                    cameraEnabled
+                      ? 'bg-white/10 text-white'
+                      : 'text-white hover:bg-white/5'
+                  }`}
                 >
                   {cameraEnabled ? (
                     <Video className="w-5 h-5" />
@@ -274,33 +278,34 @@ export default function VoiceAssistant() {
                     <VideoOff className="w-5 h-5" />
                   )}
                 </button>
-                <button className="absolute -right-2 top-1/2 -translate-y-1/2 p-1">
+                <button className="px-2 py-4 rounded-r-full hover:bg-white/5 transition-all">
                   <svg className="w-3 h-3 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
                   </svg>
                 </button>
               </div>
 
-              <button className="p-3 rounded-lg bg-transparent hover:bg-gray-800 transition-all">
+              {/* Screen Share */}
+              <button className="p-4 bg-[#2a2a2a] rounded-full hover:bg-white/5 transition-all text-white">
                 <ScreenShare className="w-5 h-5" />
               </button>
 
               {/* Text Chat */}
               <button
                 onClick={() => setShowTextInput(!showTextInput)}
-                className="p-3 rounded-lg bg-transparent hover:bg-gray-800 transition-all"
+                className="p-4 bg-[#2a2a2a] rounded-full hover:bg-white/5 transition-all text-white"
               >
                 <MessageSquare className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Right Control - End Call */}
+            {/* Right Section - End Call */}
             <button
               onClick={handleEndCall}
-              className="flex items-center gap-2 px-5 py-2.5 bg-red-600 hover:bg-red-700 rounded-lg transition-all"
+              className="flex items-center gap-3 px-8 py-4 bg-[#dc2626] hover:bg-[#b91c1c] rounded-full transition-all shadow-lg"
             >
-              <PhoneOff className="w-4 h-4" />
-              <span className="text-sm font-medium">END CALL</span>
+              <PhoneOff className="w-5 h-5" />
+              <span className="text-sm font-semibold tracking-wide">END CALL</span>
             </button>
           </div>
         </div>
