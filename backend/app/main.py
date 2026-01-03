@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 import os
 
 # Import routers
-from app.routers import tasks, weather, chat
+from app.routes import tasks, weather, chat
 
 # Import database initialization
 from app.services.database import init_db

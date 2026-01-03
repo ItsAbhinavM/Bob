@@ -6,5 +6,6 @@ sqlalchemy
 
 # Install these separately to avoid compilation
 pydantic
+langchain
 langchain-google-genai
 google-generativeai

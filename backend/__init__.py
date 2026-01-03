@@ -1,6 +1,6 @@
 # backend/app/__init__.py
 """
-Voice AI Assistant Backend
+Bob Backend
 """
 __version__ = "1.0.0"
 

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Mic, MicOff, Volume2, VolumeX, Loader2 } from 'lucide-react';
+import { Mic, MicOff, Volume2, VolumeX, Loader2, Send } from 'lucide-react';
 import { useVoice } from '../lib/useVoice';
 import { chatAPI } from '../lib/api';
 
@@ -22,12 +22,25 @@ export default function VoiceAssistant() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [messages, setMessages] = useState<Array<{ role: 'user' | 'assistant'; content: string }>>([]);
   const [error, setError] = useState<string | null>(null);
+  const [currentTranscript, setCurrentTranscript] = useState<string>('');
+  const [textInput, setTextInput] = useState<string>('');
 
   useEffect(() => {
-    if (transcript && !isProcessing) {
-      handleSendMessage(transcript);
+    if (transcript && transcript !== currentTranscript) {
+      setCurrentTranscript(transcript);
     }
   }, [transcript]);
+
+  useEffect(() => {
+    // Auto-submit after transcript is complete (when listening stops)
+    if (currentTranscript && !isListening && !isProcessing) {
+      const timer = setTimeout(() => {
+        handleSendMessage(currentTranscript);
+        setCurrentTranscript('');
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [currentTranscript, isListening, isProcessing]);
 
   const handleSendMessage = async (message: string) => {
     if (!message.trim()) return;
@@ -66,6 +79,7 @@ export default function VoiceAssistant() {
     if (isListening) {
       stopListening();
     } else {
+      setCurrentTranscript('');
       startListening();
     }
   };
@@ -73,6 +87,14 @@ export default function VoiceAssistant() {
   const handleSpeakToggle = () => {
     if (isSpeaking) {
       stopSpeaking();
+    }
+  };
+
+  const handleTextSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (textInput.trim()) {
+      handleSendMessage(textInput);
+      setTextInput('');
     }
   };
 
@@ -92,7 +114,7 @@ export default function VoiceAssistant() {
   return (
     <div className="flex flex-col min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-gray-900">
       <header className="bg-black/30 backdrop-blur-sm border-b border-white/10 px-6 py-4">
-        <h1 className="text-2xl font-bold text-white">Voice AI Assistant</h1>
+        <h1 className="text-2xl font-bold text-white">Bob - Voice AI Assistant</h1>
         <p className="text-gray-400 text-sm">Powered by Google Gemini</p>
       </header>
 
@@ -101,10 +123,17 @@ export default function VoiceAssistant() {
           <div className="flex items-center justify-center h-full">
             <div className="text-center text-gray-400">
               <Mic className="w-16 h-16 mx-auto mb-4 opacity-50" />
-              <p className="text-lg">Click the microphone to start talking</p>
-              <p className="text-sm mt-2">
-                Try: "What's the weather?", "Add a task", or ask me anything!
-              </p>
+              <p className="text-lg mb-2">Click the microphone to start talking</p>
+              <p className="text-sm text-gray-500 mb-4">Or type your message below</p>
+              <div className="bg-white/5 rounded-lg p-4 max-w-md mx-auto text-left">
+                <p className="text-sm font-semibold mb-2">Try saying:</p>
+                <ul className="text-sm space-y-1 text-gray-400">
+                  <li>• "What's the weather in London?"</li>
+                  <li>• "Add a task to buy groceries"</li>
+                  <li>• "Show me my tasks"</li>
+                  <li>• "What is artificial intelligence?"</li>
+                </ul>
+              </div>
             </div>
           </div>
         ) : (
@@ -121,7 +150,7 @@ export default function VoiceAssistant() {
                 }`}
               >
                 <p className="text-sm font-medium mb-1 opacity-70">
-                  {msg.role === 'user' ? 'You' : 'AI Assistant'}
+                  {msg.role === 'user' ? 'You' : 'Bob'}
                 </p>
                 <p className="whitespace-pre-wrap">{msg.content}</p>
               </div>
@@ -129,12 +158,22 @@ export default function VoiceAssistant() {
           ))
         )}
 
+        {/* Show what's being transcribed in real-time */}
+        {isListening && currentTranscript && (
+          <div className="flex justify-end">
+            <div className="max-w-[70%] rounded-2xl px-6 py-3 bg-blue-500/50 text-white border-2 border-blue-400">
+              <p className="text-sm font-medium mb-1 opacity-70">Listening...</p>
+              <p className="whitespace-pre-wrap italic">{currentTranscript}</p>
+            </div>
+          </div>
+        )}
+
         {isProcessing && (
           <div className="flex justify-start">
             <div className="bg-white/10 backdrop-blur-sm rounded-2xl px-6 py-3">
               <div className="flex items-center space-x-2">
                 <Loader2 className="w-4 h-4 animate-spin" />
-                <p className="text-gray-300">Processing...</p>
+                <p className="text-gray-300">Bob is thinking...</p>
               </div>
             </div>
           </div>
@@ -147,6 +186,28 @@ export default function VoiceAssistant() {
         </div>
       )}
 
+      {/* Text Input Form */}
+      <div className="px-6 pb-4">
+        <form onSubmit={handleTextSubmit} className="flex gap-2">
+          <input
+            type="text"
+            value={textInput}
+            onChange={(e) => setTextInput(e.target.value)}
+            placeholder="Or type your message here..."
+            disabled={isProcessing || isListening}
+            className="flex-1 px-4 py-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+          />
+          <button
+            type="submit"
+            disabled={!textInput.trim() || isProcessing || isListening}
+            className="px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            <Send className="w-5 h-5" />
+          </button>
+        </form>
+      </div>
+
+      {/* Voice Controls */}
       <div className="bg-black/30 backdrop-blur-sm border-t border-white/10 px-6 py-6">
         <div className="flex items-center justify-center space-x-6">
           <button
@@ -186,15 +247,20 @@ export default function VoiceAssistant() {
         </div>
 
         <div className="text-center mt-4">
-          <p className="text-gray-300 text-sm">
+          <p className="text-gray-300 text-sm font-medium">
             {isListening
-              ? 'Listening... Speak now'
+              ? '🎤 Listening... Speak now'
               : isSpeaking
-              ? 'Speaking...'
+              ? '🔊 Bob is speaking...'
               : isProcessing
-              ? 'Processing your request...'
-              : 'Click the microphone to start'}
+              ? '⏳ Processing your request...'
+              : '💡 Click microphone or type below'}
           </p>
+          {isListening && (
+            <p className="text-gray-400 text-xs mt-1">
+              Stop speaking to automatically submit
+            </p>
+          )}
         </div>
       </div>
     </div>
