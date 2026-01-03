@@ -42,7 +42,7 @@ class AIAssistantAgent:
     def __init__(self):
         genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
         # Use gemini-1.5-flash for better free tier limits (1500/day vs 20/day)
-        self.model = genai.GenerativeModel('gemini-2.5-flash-lite')
+        self.model = genai.GenerativeModel('gemini-2.5-flash')
         self.tools = self._initialize_tools()
         self.conversation_history = []
         
