@@ -13,6 +13,7 @@ from app.agents.tools.email_service import email_service
 from app.agents.tools.contact_service import contact_service
 from app.agents.tools.stack_overflow_search import stackoverflow_service
 from app.agents.tools.github_services import github_service
+from app.agents.tools.project_validator import get_project_validator
 from app.agents.tools.readme_generator import get_readme_generator
 from app.agents.tools.youtube_transcript import youtube_loader
 from app.agents.tools.discord_sharing import send_to_discord
@@ -151,6 +152,12 @@ class AIAssistantAgent:
                 func=self._generate_readme,
                 requires_input=True
             ),
+            Tool(
+                name="validate_project",
+                description="Validate and rate a GitHub repository project. Analyzes code quality, documentation, uniqueness, and provides a score out of 10 with detailed feedback. Use when user says 'validate project', 'rate my repo', 'analyze project', 'how good is this project', or 'evaluate repository'. Input: repository in format 'owner/repo' or GitHub URL (e.g., 'facebook/react' or 'https://github.com/microsoft/vscode')",
+                func=self._validate_project,
+                requires_input=True
+            ),
         ]
     
     def _get_tools_description(self) -> str:
@@ -172,6 +179,7 @@ class AIAssistantAgent:
             'stackoverflow': ['how to', 'how do i', 'error', 'debug', 'fix', 'code', 'python', 'javascript', 'react', 'fastapi', 'api', 'function', 'syntax', 'stackoverflow'],
             'github': ['github', 'issue', 'bug', 'repository', 'repo', 'pull request', 'pr'],
             'readme': ["readme", "generate readme", "create readme", "documentation", "document my repo"],
+            'validate' : [ "validate", "rate", "analyze project", "evaluate", "how good", "project quality", "check project", "review project", "assess", "score"],
         }
         
         message_lower = message.lower()
@@ -759,6 +767,24 @@ class AIAssistantAgent:
             
         except Exception as e:
             return f"Error listing repositories: {str(e)}"
+        
+    async def _validate_project(self, repo_input: str) -> str:
+        """
+        Validate and rate a GitHub repository project
+        
+        Args:
+            repo_input: Repository in format 'owner/repo' or GitHub URL
+        
+        Returns:
+            Comprehensive validation report with score and recommendations
+        """
+        try:
+            validator = get_project_validator()
+            report = validator.validate_project(repo_input)
+            return report
+        
+        except Exception as e:
+            return f"❌ Failed to validate project: {str(e)}\n\nPlease ensure:\n1. Repository exists and is public\n2. Format is 'owner/repo' or valid GitHub URL\n3. GitHub API is accessible"
         
     async def _generate_readme(self, repo_input: str) -> str:
         """
