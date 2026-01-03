@@ -9,6 +9,8 @@ import time
 
 from app.services.database import SessionLocal, Task
 from app.services.weather_services import weather_service
+from app.agents.tools.email_service import email_service
+from app.agents.tools.contact_service import contact_service
 
 class Tool:
     """A tool that the agent can use"""
@@ -33,9 +35,13 @@ class AIAssistantAgent:
     def __init__(self):
         genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
         # Use gemini-1.5-flash for better free tier limits (1500/day vs 20/day)
-        self.model = genai.GenerativeModel('gemini-2.5-flash-lite')
+        self.model = genai.GenerativeModel('gemini-2.5-flash')
         self.tools = self._initialize_tools()
         self.conversation_history = []
+        
+        # Simple cache for common queries (saves API calls)
+        self.response_cache = {}
+        self.cache_enabled = True
     
     def _initialize_tools(self) -> List[Tool]:
         """Initialize all available tools"""
@@ -70,6 +76,30 @@ class AIAssistantAgent:
                 func=self._get_current_time,
                 requires_input=False
             ),
+            Tool(
+                name="send_email",
+                description="Sends an email to a contact. First check if contact exists, if not ask user to add contact. Input: JSON string with 'alias', 'subject', 'body'",
+                func=self._send_email,
+                requires_input=True
+            ),
+            Tool(
+                name="add_contact",
+                description="Adds a new contact alias. Use when user wants to save a contact or when alias doesn't exist. Input: JSON string with 'alias', 'email', 'name' (optional)",
+                func=self._add_contact,
+                requires_input=True
+            ),
+            Tool(
+                name="get_contact",
+                description="Gets contact details by alias. Use this BEFORE sending email to check if alias exists. Input: alias name",
+                func=self._get_contact,
+                requires_input=True
+            ),
+            Tool(
+                name="list_contacts",
+                description="Lists all saved contacts. Use when user asks 'who are my contacts' or 'show contacts'. Input: 'all'",
+                func=self._list_contacts,
+                requires_input=False
+            ),
         ]
     
     def _get_tools_description(self) -> str:
@@ -86,6 +116,8 @@ class AIAssistantAgent:
             'weather': ['weather', 'temperature', 'rain', 'sunny', 'climate', 'forecast'],
             'task': ['task', 'todo', 'remind', 'remember', 'add', 'create', 'complete', 'done', 'finish'],
             'time': ['time', 'date', 'today', 'now', 'what day'],
+            'email': ['email', 'send', 'mail', 'message'],
+            'contact': ['contact', 'alias', 'save contact', 'add contact'],
         }
         
         message_lower = message.lower()
@@ -104,7 +136,22 @@ class AIAssistantAgent:
         Thought -> Action -> Observation -> Thought -> ... -> Final Answer
         """
         try:
-            max_iterations = 5
+            # Check cache for non-tool queries (like "hello", "what is AI?")
+            if self.cache_enabled and not self._requires_tools(message):
+                cache_key = message.lower().strip()
+                if cache_key in self.response_cache:
+                    print(f"Cache hit for: {cache_key}")
+                    cached = self.response_cache[cache_key]
+                    return {
+                        "response": cached,
+                        "conversation_id": conversation_id or "new",
+                        "success": True,
+                        "iterations": 0,
+                        "cached": True
+                    }
+            
+            # Reduce iterations to save API quota (5 iterations = 5 API calls!)
+            max_iterations = 3
             agent_scratchpad = []
             
             # Determine if tools are needed
@@ -144,6 +191,11 @@ class AIAssistantAgent:
                 # Check if agent is done (has Final Answer)
                 if "Final Answer:" in agent_response:
                     final_answer = self._extract_final_answer(agent_response)
+                    
+                    # Cache the response if it's a general query
+                    if self.cache_enabled and not needs_tools:
+                        cache_key = message.lower().strip()
+                        self.response_cache[cache_key] = final_answer
                     
                     return {
                         "response": final_answer,
@@ -374,6 +426,128 @@ Final Answer: [your response]"""
         """Get current date and time"""
         now = datetime.now()
         return f"Current date and time: {now.strftime('%A, %B %d, %Y at %I:%M %p')}"
+    
+    async def _send_email(self, input_data: str) -> str:
+        """Send email to a contact using alias"""
+        try:
+            # Parse input (expecting JSON-like: {"alias": "john", "subject": "...", "body": "..."})
+            import json
+            
+            # Try to parse as JSON first
+            try:
+                data = json.loads(input_data)
+                alias = data.get('alias')
+                subject = data.get('subject')
+                body = data.get('body')
+            except:
+                # Fallback: parse manually if not JSON
+                # Expected format: "alias: john, subject: Hello, body: How are you?"
+                parts = {}
+                for part in input_data.split(','):
+                    if ':' in part:
+                        key, value = part.split(':', 1)
+                        parts[key.strip().lower()] = value.strip()
+                
+                alias = parts.get('alias')
+                subject = parts.get('subject')
+                body = parts.get('body')
+            
+            if not alias or not subject or not body:
+                return "Error: Missing required fields. Need: alias, subject, body"
+            
+            # Get contact email
+            contact = await contact_service.get_contact(alias)
+            
+            if not contact:
+                return f"Contact '{alias}' not found. Please ask user to add this contact first with their email address."
+            
+            # Send email
+            result = await email_service.send_email(
+                to_email=contact['email'],
+                subject=subject,
+                body=body,
+                to_alias=alias
+            )
+            
+            if result['success']:
+                return f"Successfully sent email to {alias} ({contact['email']}). Subject: {subject}"
+            else:
+                return f"Failed to send email: {result.get('error', 'Unknown error')}"
+                
+        except Exception as e:
+            return f"Error sending email: {str(e)}"
+    
+    async def _add_contact(self, input_data: str) -> str:
+        """Add a new contact alias"""
+        try:
+            import json
+            
+            # Parse input
+            try:
+                data = json.loads(input_data)
+                alias = data.get('alias')
+                email = data.get('email')
+                name = data.get('name')
+            except:
+                # Fallback parsing
+                parts = {}
+                for part in input_data.split(','):
+                    if ':' in part:
+                        key, value = part.split(':', 1)
+                        parts[key.strip().lower()] = value.strip()
+                
+                alias = parts.get('alias')
+                email = parts.get('email')
+                name = parts.get('name')
+            
+            if not alias or not email:
+                return "Error: Need both alias and email. Example: alias: john, email: john@example.com"
+            
+            result = await contact_service.add_contact(
+                alias=alias,
+                email=email,
+                name=name
+            )
+            
+            if result['success']:
+                return f"Contact '{alias}' added successfully for {email}"
+            else:
+                return f"Failed to add contact: {result.get('error', 'Unknown error')}"
+                
+        except Exception as e:
+            return f"Error adding contact: {str(e)}"
+    
+    async def _get_contact(self, alias: str) -> str:
+        """Get contact details by alias"""
+        try:
+            contact = await contact_service.get_contact(alias.strip())
+            
+            if not contact:
+                return f"Contact '{alias}' not found. Available action: Ask user to add this contact."
+            
+            name_part = f" ({contact['name']})" if contact['name'] else ""
+            return f"Contact '{alias}'{name_part}: {contact['email']}"
+            
+        except Exception as e:
+            return f"Error getting contact: {str(e)}"
+    
+    async def _list_contacts(self, _: str = "") -> str:
+        """List all contacts"""
+        try:
+            contacts = await contact_service.list_contacts()
+            
+            if not contacts:
+                return "No contacts saved yet."
+            
+            contact_list = f"Found {len(contacts)} contacts:\n"
+            for i, contact in enumerate(contacts, 1):
+                name_part = f" ({contact['name']})" if contact['name'] else ""
+                contact_list += f"{i}. {contact['alias']}{name_part}: {contact['email']}\n"
+            
+            return contact_list
+            
+        except Exception as e:
+            return f"Error listing contacts: {str(e)}"
 
 # Create global agent instance
 ai_agent = AIAssistantAgent()
