@@ -11,13 +11,11 @@ class EmailService:
     """SMTP-based email service"""
     
     def __init__(self):
-        # Email configuration from environment - NO FALLBACK for security
         self.sender_email = os.getenv("SENDER_EMAIL")
         self.sender_password = os.getenv("SENDER_PASSWORD")
         self.smtp_server = os.getenv("SMTP_SERVER", "smtp.gmail.com")
         self.smtp_port = int(os.getenv("SMTP_PORT", "587"))
         
-        # Validate required environment variables
         if not self.sender_email:
             print("⚠️ ERROR: SENDER_EMAIL not set in .env file!")
         if not self.sender_password:
@@ -42,10 +40,26 @@ class EmailService:
         Returns:
             Dict with status and message
         """
+        print(f"\n📧 ===== EMAIL SEND ATTEMPT =====")
+        print(f"To: {to_email}")
+        print(f"Alias: {to_alias}")
+        print(f"Subject: {subject}")
+        print(f"Body length: {len(body)} chars")
+        print(f"Sender: {self.sender_email}")
+        print(f"SMTP Server: {self.smtp_server}:{self.smtp_port}")
+        
+        if not self.sender_email or not self.sender_password:
+            error = "❌ Email credentials not configured in .env file"
+            print(error)
+            return {
+                "success": False,
+                "error": error
+            }
+        
         db = SessionLocal()
+        email_log = None
         
         try:
-            # Create email log entry
             email_log = EmailLog(
                 to_email=to_email,
                 to_alias=to_alias,
@@ -56,26 +70,32 @@ class EmailService:
             db.add(email_log)
             db.commit()
             log_id = email_log.id
+            print(f"📧 Email log created: ID={log_id}")
             
-            # Create message
             message = MIMEMultipart()
             message["From"] = self.sender_email
             message["To"] = to_email
             message["Subject"] = subject
             
-            # Add body
             message.attach(MIMEText(body, "plain"))
+            print(f"📧 Message constructed")
             
-            # Connect to SMTP server and send
+            print(f"📧 Connecting to {self.smtp_server}:{self.smtp_port}...")
             with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
-                server.starttls()  # Secure connection
+                print(f"📧 Starting TLS...")
+                server.starttls()
+                
+                print(f"📧 Logging in as {self.sender_email}...")
                 server.login(self.sender_email, self.sender_password)
+                
+                print(f"📧 Sending message...")
                 server.send_message(message)
+                print(f"✅ Email sent successfully!")
             
-            # Update log as sent
             email_log.status = "sent"
             email_log.sent_at = datetime.utcnow()
             db.commit()
+            print(f"📧 Database updated: status=sent")
             
             return {
                 "success": True,
@@ -83,29 +103,37 @@ class EmailService:
                 "log_id": log_id
             }
             
-        except smtplib.SMTPAuthenticationError:
-            error = "Authentication failed. Check SENDER_PASSWORD in .env (use Gmail App Password)"
-            email_log.status = "failed"
-            email_log.error_message = error
-            db.commit()
+        except smtplib.SMTPAuthenticationError as e:
+            error = f"❌ Authentication failed: {str(e)}. Check SENDER_PASSWORD in .env (must be Gmail App Password)"
+            print(error)
+            if email_log:
+                email_log.status = "failed"
+                email_log.error_message = error
+                db.commit()
             return {
                 "success": False,
                 "error": error
             }
             
         except smtplib.SMTPException as e:
-            error = f"SMTP error: {str(e)}"
-            email_log.status = "failed"
-            email_log.error_message = error
-            db.commit()
+            error = f"❌ SMTP error: {str(e)}"
+            print(error)
+            if email_log:
+                email_log.status = "failed"
+                email_log.error_message = error
+                db.commit()
             return {
                 "success": False,
                 "error": error
             }
             
         except Exception as e:
-            error = f"Failed to send email: {str(e)}"
-            if 'email_log' in locals():
+            error = f"❌ Failed to send email: {str(e)}"
+            print(error)
+            import traceback
+            traceback.print_exc()
+            
+            if email_log:
                 email_log.status = "failed"
                 email_log.error_message = error
                 db.commit()
@@ -116,6 +144,7 @@ class EmailService:
         
         finally:
             db.close()
+            print(f"📧 ===== EMAIL SEND COMPLETE =====\n")
     
     def get_email_logs(self, limit: int = 10) -> list:
         """Get recent email logs"""
@@ -137,6 +166,4 @@ class EmailService:
         finally:
             db.close()
 
-
-# Create global instance
 email_service = EmailService()

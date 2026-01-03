@@ -1,7 +1,7 @@
 import google.generativeai as genai
 import os
 from datetime import datetime
-from typing import Dict, Any, List, Callable, Optional
+from typing import Dict, Any, List, Callable, Optional, Tuple
 import re
 import json
 import asyncio
@@ -80,7 +80,7 @@ class AIAssistantAgent:
             ),
             Tool(
                 name="send_email",
-                description="Sends an email to a contact. First check if contact exists, if not ask user to add contact. Input: JSON string with 'alias', 'subject', 'body'",
+                description="Sends an email via SMTP. CRITICAL: This tool ACTUALLY sends the email - you MUST use it to send emails. Input: JSON string with 'alias', 'subject', 'body'. Example: {\"alias\": \"john\", \"subject\": \"Meeting\", \"body\": \"Hi John...\"}",
                 func=self._send_email,
                 requires_input=True
             ),
@@ -170,6 +170,7 @@ class AIAssistantAgent:
             # Reduce iterations to save API quota (5 iterations = 5 API calls!)
             max_iterations = 5
             agent_scratchpad = []
+            tools_used = []  # Track which tools were actually executed
             
             # Determine if tools are needed
             needs_tools = self._requires_tools(message)
@@ -209,6 +210,21 @@ class AIAssistantAgent:
                 if "Final Answer:" in agent_response:
                     final_answer = self._extract_final_answer(agent_response)
                     
+                    # CRITICAL CHECK: Verify required tools were actually used
+                    message_lower = message.lower()
+                    
+                    # Check for email
+                    if ('email' in message_lower or 'mail' in message_lower) and 'send_email' not in tools_used:
+                        print("⚠️ WARNING: Email mentioned but send_email tool not used!")
+                        agent_scratchpad.append("\nObservation: ERROR - You said you sent an email but you didn't use the send_email tool. You MUST call the send_email tool to actually send emails. Try again.\n")
+                        continue
+                    
+                    # Check for weather
+                    if 'weather' in message_lower and 'get_weather' not in tools_used:
+                        print("⚠️ WARNING: Weather mentioned but get_weather tool not used!")
+                        agent_scratchpad.append("\nObservation: ERROR - You need to use the get_weather tool to get weather information. Try again.\n")
+                        continue
+                    
                     # Cache the response if it's a general query
                     if self.cache_enabled and not needs_tools:
                         cache_key = message.lower().strip()
@@ -219,13 +235,17 @@ class AIAssistantAgent:
                         "conversation_id": conversation_id or "new",
                         "success": True,
                         "iterations": iteration + 1,
-                        "reasoning": agent_scratchpad
+                        "reasoning": agent_scratchpad,
+                        "tools_used": tools_used
                     }
                 
                 # Parse and execute action
-                action_result = await self._parse_and_execute_action(agent_response)
+                action_result, action_name = await self._parse_and_execute_action(agent_response)
                 
                 if action_result:
+                    if action_name:
+                        tools_used.append(action_name)
+                        print(f"✅ Tool executed: {action_name}")
                     agent_scratchpad.append(f"\nObservation: {action_result}\n")
                 else:
                     # Agent didn't provide proper action format
@@ -237,7 +257,8 @@ class AIAssistantAgent:
                 "conversation_id": conversation_id or "new",
                 "success": True,
                 "iterations": max_iterations,
-                "reasoning": agent_scratchpad
+                "reasoning": agent_scratchpad,
+                "tools_used": tools_used
             }
             
         except Exception as e:
@@ -256,48 +277,56 @@ class AIAssistantAgent:
         """Build prompt that FORCES tool usage"""
         return f"""You are Bob, an AI agent that MUST use tools to answer user questions.
 
-{self._get_tools_description()}
+            {self._get_tools_description()}
 
-CRITICAL RULES:
-1. You MUST use tools for this request - DO NOT answer without using tools first
-2. Follow this EXACT format for EVERY step:
+            CRITICAL RULES:
+            1. You MUST use tools for this request - DO NOT answer without using tools first
+            2. NEVER say you did something unless you ACTUALLY used the tool
+            3. Follow this EXACT format for EVERY step:
 
-Thought: [Your reasoning about what to do next]
-Action: [exact tool name]
-Action Input: [the input for that tool]
+            Thought: [Your reasoning about what to do next]
+            Action: [exact tool name]
+            Action Input: [the input for that tool]
 
-3. After you see an Observation, continue with another Thought/Action cycle
-4. ONLY use "Final Answer:" after you have used at least one tool and have the information
-5. Your Final Answer must be natural, conversational, and based on the tool observations
+            4. After you see an Observation, continue with another Thought/Action cycle
+            5. ONLY use "Final Answer:" after you have ACTUALLY executed the required tools
+            6. Your Final Answer must be based ONLY on what the Observation shows
 
-User Request: {message}
+            IMPORTANT FOR EMAILS:
+            - To send an email, you MUST call the send_email tool
+            - Format: Action: send_email
+                    Action Input: {{"alias": "name", "subject": "...", "body": "..."}}
+            - Wait for the Observation to confirm "✅ Email sent successfully"
+            - Only say "email sent" if the Observation confirms it
 
-Begin! Start with your first Thought:"""
+            User Request: {message}
+
+            Begin! Start with your first Thought:"""
     
     def _build_general_prompt(self, message: str) -> str:
         """Build prompt for general questions that don't need tools"""
         return f"""You are Bob, a helpful AI assistant.
 
-The user asked: {message}
+        The user asked: {message}
 
-This appears to be a general question that doesn't require tools. Provide a helpful, concise answer.
+        This appears to be a general question that doesn't require tools. Provide a helpful, concise answer.
 
-If you realize mid-response that you DO need tools (weather, tasks, time), stop and use this format:
-Thought: [reasoning]
-Action: [tool_name]
-Action Input: [input]
+        If you realize mid-response that you DO need tools (weather, tasks, time, email), stop and use this format:
+        Thought: [reasoning]
+        Action: [tool_name]
+        Action Input: [input]
 
-Otherwise, respond naturally with:
-Final Answer: [your response]"""
+        Otherwise, respond naturally with:
+        Final Answer: [your response]"""
     
-    async def _parse_and_execute_action(self, agent_response: str) -> Optional[str]:
-        """Parse the agent's response and execute the action"""
+    async def _parse_and_execute_action(self, agent_response: str) -> Tuple[Optional[str], Optional[str]]:
+        """Parse the agent's response and execute the action. Returns (result, action_name)"""
         # Extract action and input using regex
         action_match = re.search(r'Action:\s*([^\n]+)', agent_response, re.IGNORECASE)
         input_match = re.search(r'Action Input:\s*([^\n]+)', agent_response, re.IGNORECASE)
         
         if not action_match or not input_match:
-            return None
+            return None, None
         
         action_name = action_match.group(1).strip()
         action_input = input_match.group(1).strip()
@@ -311,12 +340,12 @@ Final Answer: [your response]"""
         if tool:
             try:
                 result = await tool.func(action_input)
-                return result
+                return result, action_name
             except Exception as e:
-                return f"Error executing {action_name}: {str(e)}"
+                return f"Error executing {action_name}: {str(e)}", action_name
         else:
             available_tools = ", ".join([t.name for t in self.tools])
-            return f"Error: Tool '{action_name}' not found. Available tools: {available_tools}"
+            return f"Error: Tool '{action_name}' not found. Available tools: {available_tools}", None
     
     def _extract_final_answer(self, agent_response: str) -> str:
         """Extract the final answer from agent response"""
@@ -446,6 +475,12 @@ Final Answer: [your response]"""
     
     async def _send_email(self, input_data: str) -> str:
         """Send email to a contact using alias"""
+        
+        # CRITICAL DEBUG - Shows when tool is actually called
+        print("\n" + "="*60)
+        print("🚨 SEND_EMAIL TOOL WAS ACTUALLY CALLED!")
+        print("="*60 + "\n")
+        
         try:
             print(f"📧 Email tool called with input: {input_data}")
             
@@ -572,23 +607,24 @@ Final Answer: [your response]"""
             
         except Exception as e:
             return f"Error listing contacts: {str(e)}"
-    async def send_to_discord_tool(self,message: str)-> str:
-            """Send a message through Discord."""
-            return send_to_discord(message)
-        
-    async def get_youtube_transcript_tool(self,link: str)-> str:
-            """
-            Gets the transcript/notes from a YouTube video. 
-            Provide a valid YouTube URL (e.g., https://www.youtube.com/watch?v=VIDEO_ID or https://youtu.be/VIDEO_ID).
-            Returns detailed transcript with timestamps.
-            """
-            return youtube_loader(link)
+    
+    async def send_to_discord_tool(self, message: str) -> str:
+        """Send a message through Discord."""
+        return send_to_discord(message)
+    
+    async def get_youtube_transcript_tool(self, link: str) -> str:
+        """
+        Gets the transcript/notes from a YouTube video. 
+        Provide a valid YouTube URL (e.g., https://www.youtube.com/watch?v=VIDEO_ID or https://youtu.be/VIDEO_ID).
+        Returns detailed transcript with timestamps.
+        """
+        return youtube_loader(link)
 
     async def create_detailed_notes_tool(self, transcript: str) -> str:
-            """
-            Creates detailed and structured notes from a YouTube video transcript.
-            """
-            notes_prompt = f"""
+        """
+        Creates detailed and structured notes from a YouTube video transcript.
+        """
+        notes_prompt = f"""
             Please create detailed, well-structured notes from the following YouTube video transcript.
             Organize the content into clear sections with:
             - Main topics and subtopics
@@ -601,13 +637,13 @@ Final Answer: [your response]"""
 
             Please format the notes in a clear, readable structure with headings and bullet points.
             """
-            
-            try:
-                # Use Gemini's generate_content method (not invoke)
-                response = self.model.generate_content(notes_prompt)
-                return response.text
-            except Exception as e:
-                return f"Error creating notes: {str(e)}"
+        
+        try:
+            # Use Gemini's generate_content method (not invoke)
+            response = self.model.generate_content(notes_prompt)
+            return response.text
+        except Exception as e:
+            return f"Error creating notes: {str(e)}"
 
 # Create global agent instance
 ai_agent = AIAssistantAgent()
