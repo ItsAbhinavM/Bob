@@ -7,20 +7,10 @@ router = APIRouter()
 
 @router.post("/", response_model=ChatResponse)
 async def process_chat(message: ChatMessage):
-    """
-    Process a chat message through the AI agent
-    
-    Args:
-        message: ChatMessage containing the user's message and optional conversation_id
-    
-    Returns:
-        ChatResponse with AI assistant's response
-    """
+    """Process a chat message through the AI agent"""
     try:
-        # Generate conversation ID if not provided
         conversation_id = message.conversation_id or str(uuid.uuid4())
         
-        # Process message through AI agent
         result = await ai_agent.process_message(
             message=message.message,
             conversation_id=conversation_id

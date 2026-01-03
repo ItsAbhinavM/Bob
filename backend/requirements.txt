@@ -1,6 +1,5 @@
 fastapi==0.109.0
 uvicorn[standard]==0.27.0
-pymongo==4.6.1
 python-dotenv==1.0.0
 langchain==0.1.4
 langchain-google-genai==0.0.6
@@ -9,3 +8,4 @@ python-multipart==0.0.6
 httpx==0.26.0
 google-generativeai==0.3.2
 langchain-community==0.0.16
+sqlalchemy==2.0.25
