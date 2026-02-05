@@ -257,4 +257,7 @@ If you think Bob is cool, give it a ⭐️!
 
 Built with ❤️ for student developers everywhere.
 
+## LICENSE
+This project is licensed under [GPL v2](https://github.com/ItsAbhinavM/bob/blob/main?tab=GPL-2.0-1-ov-file).
+
 ---
