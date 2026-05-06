@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  backend:
+    image: bob-backend:1.0.0
+    container_name: bob-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - OPENWEATHER_API_KEY=${OPENWEATHER_API_KEY}
+      - SENDER_EMAIL=${SENDER_EMAIL}
+      - SENDER_PASSWORD=${SENDER_PASSWORD}
+      - SMTP_SERVER=${SMTP_SERVER}
+      - SMTP_PORT=${SMTP_PORT}
+      - DISCORD_WEBHOOK=${DISCORD_WEBHOOK}
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - GITHUB_DEFAULT_REPO=${GITHUB_DEFAULT_REPO}
+      - AZURE_API_KEY=${AZURE_API_KEY}
+      - DATABASE_URL=sqlite:///./bob_assistant.db
+    volumes:
+      - ./backend/bob_assistant.db:/app/bob_assistant.db
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    networks:
+      - bob-network
+
+  frontend:
+    image: bob-frontend:1.0.0
+    container_name: bob-frontend
+    ports:
+      - "3001:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    networks:
+      - bob-network
+
+networks:
+  bob-network:
+    driver: bridge

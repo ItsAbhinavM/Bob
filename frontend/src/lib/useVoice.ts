@@ -19,7 +19,7 @@ export function useVoice(): UseVoiceReturn {
   const [error, setError] = useState<string | null>(null);
   const [isSupported, setIsSupported] = useState(false);
 
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const recognitionRef = useRef<any | null>(null);
   const synthesisRef = useRef<SpeechSynthesisUtterance | null>(null);
   const speakingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -43,7 +43,7 @@ export function useVoice(): UseVoiceReturn {
         setError(null);
       };
 
-      recognition.onresult = (event: SpeechRecognitionEvent) => {
+      recognition.onresult = (event: any) => {
         const current = event.resultIndex;
         const transcript = event.results[current][0].transcript;
         setTranscript(transcript);

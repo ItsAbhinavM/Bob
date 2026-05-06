@@ -81,7 +81,7 @@ export const weatherAPI = {
 
 export const chatAPI = {
   send: async (message: ChatMessage): Promise<ChatResponse> => {
-    const response = await apiClient.post('/api/chat', message);
+    const response = await apiClient.post('/api/chat/', message);
     return response.data;
   },
 };
