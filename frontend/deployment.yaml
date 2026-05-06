@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bob-frontend-deployment
+
+spec:
+  replicas: 2
+
+  selector:
+    matchLabels:
+      app: bob-frontend
+
+  template:
+    metadata:
+      labels:
+        app: bob-frontend
+
+    spec:
+      containers:
+      - name: bob-frontend
+
+        image: itsabhinavm/bob-frontend:latest
+
+        ports:
+        - containerPort: 3000
