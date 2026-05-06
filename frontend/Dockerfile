@@ -50,4 +50,4 @@ EXPOSE 3001
 ENTRYPOINT ["dumb-init", "--"]
 
 # Run Next.js app
-CMD ["npm", "start", "--", "-p", "3001"]
+CMD ["npm", "start", "--", "-H", "0.0.0.0", "-p", "3001"]
